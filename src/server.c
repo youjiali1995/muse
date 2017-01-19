@@ -163,7 +163,7 @@ int main(int argc, char *argv[])
 
         for (int i = 0; i < nfds; i++) {
             ev_t *ev = events[i].data.ptr;
-            if (events[i].events & EPOLLIN)
+            if (events[i].events & EPOLLIN) {
                 if (ev->in_handler(ev->ptr) == MUSE_ERROR) {
                     if (ev->err_handler)
                         ev->err_handler(ev->ptr);
@@ -172,8 +172,8 @@ int main(int argc, char *argv[])
                     if (ev->ok_handler)
                         ev->ok_handler(ev->ptr);
                 }
-
-            if (events[i].events & EPOLLOUT)
+            }
+            if (events[i].events & EPOLLOUT) {
                 if (ev->out_handler(ev->ptr) == MUSE_ERROR) {
                     if (ev->err_handler)
                         ev->err_handler(ev->ptr);
@@ -182,6 +182,7 @@ int main(int argc, char *argv[])
                     if (ev->ok_handler)
                         ev->ok_handler(ev->ptr);
                 }
+            }
         }
         sweep_connection();
     }
