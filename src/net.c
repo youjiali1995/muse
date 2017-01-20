@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <linux/tcp.h>
 #include "net.h"
 #include "util.h"
 
@@ -16,6 +17,22 @@ int set_nonblocking(int fd)
     MUSE_ERR_ON(flag == -1, strerror(errno), MUSE_ERROR);
     flag |= O_NONBLOCK;
     MUSE_ERR_ON(fcntl(fd, F_SETFL, flag) == -1, strerror(errno), MUSE_ERROR);
+    return MUSE_OK;
+}
+
+int set_tcp_cork(int fd)
+{
+    int on = 1;
+    MUSE_ERR_ON(setsockopt(fd, IPPROTO_TCP, TCP_CORK, &on, sizeof(on)) == -1,
+            strerror(errno), MUSE_ERROR);
+    return MUSE_OK;
+}
+
+int reset_tcp_cork(int fd)
+{
+    int off = 0;
+    MUSE_ERR_ON(setsockopt(fd, IPPROTO_TCP, TCP_CORK, &off, sizeof(off)) == -1,
+            strerror(errno), MUSE_ERROR);
     return MUSE_OK;
 }
 
