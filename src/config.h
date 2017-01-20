@@ -5,7 +5,7 @@
 #include <stdbool.h>
 
 typedef struct {
-    uint16_t port;
+    int port;
     bool daemon;
     int worker;
     int timeout;

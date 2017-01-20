@@ -156,7 +156,6 @@ int main(int argc, char *argv[])
 
     struct epoll_event events[MAX_EVENTS];
     for (;;) {
-        /* 定时一秒 */
         int nfds = epoll_wait(epfd, events, MAX_EVENTS, 500);
         if (nfds == MUSE_ERROR)
             MUSE_EXIT_ON(errno != EINTR, strerror(errno));
