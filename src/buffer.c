@@ -12,6 +12,7 @@ void buffer_init(buffer_t *buffer)
 
 int buffer_recv(buffer_t *buffer, int fd)
 {
+    assert(buffer);
     while (!buffer_full(buffer)) {
         ssize_t len = recv(fd, buffer->end, buffer_space(buffer), 0);
         if (len == 0)
@@ -25,6 +26,7 @@ int buffer_recv(buffer_t *buffer, int fd)
 
 int buffer_send(buffer_t *buffer, int fd)
 {
+    assert(buffer);
     while (buffer_size(buffer)) {
         ssize_t len = send(fd, buffer->begin, buffer_size(buffer), 0);
         if (len == -1)
