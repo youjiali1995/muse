@@ -16,5 +16,7 @@ typedef struct {
 int accept_connection(void *listen_fd);
 void close_connection(void *c);
 void sweep_connection(void);
+int handle_request(void *c);
+int handle_response(void *c);
 
 #endif
