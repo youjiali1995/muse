@@ -15,7 +15,8 @@ typedef enum {
     POST,
     TRACE,
     OPTIONS,
-    DELETE
+    DELETE,
+    CONNECT
 } method_t;
 
 typedef struct {
@@ -88,6 +89,10 @@ typedef struct {
 
 typedef enum {
     PARSE_REQUEST_LINE,
+    PARSE_METHOD,
+    PARSE_URL,
+    PARSE_HTTP_VERSION,
+
     PARSE_HEADER,
     PARSE_BODY,
     PARSE_DONE
@@ -98,13 +103,13 @@ typedef struct {
     method_t method;
     url_t url;
     version_t http_version;
-    /* headers */
-    header_t header;
 
+    header_t header;
     str_t body;
 
     parse_stage_t stage;
     char *check_ch;
+    int status_code;
 
     buffer_t recv_buf;
     buffer_t send_buf;
