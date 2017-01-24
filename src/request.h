@@ -10,13 +10,13 @@
 
 typedef enum {
     GET,
-    HEAD,
     PUT,
+    HEAD,
     POST,
     TRACE,
-    OPTIONS,
     DELETE,
-    CONNECT
+    CONNECT,
+    OPTIONS
 } method_t;
 
 typedef struct {
@@ -24,6 +24,8 @@ typedef struct {
     str_t host;
     str_t port;
     str_t path;
+    str_t extension;
+    str_t query;
 } url_t;
 
 typedef struct {
@@ -91,9 +93,17 @@ typedef enum {
     PARSE_REQUEST_LINE,
     PARSE_METHOD,
     PARSE_URL,
+    PARSE_URL_SCHEME,
+    PARSE_URL_HOST,
+    PARSE_URL_PORT,
+    PARSE_URL_PATH,
+    PARSE_URL_QUERY,
     PARSE_HTTP_VERSION,
 
     PARSE_HEADER,
+    PARSE_HEADER_NAME,
+    PARSE_HEADER_VALUE,
+
     PARSE_BODY,
     PARSE_DONE
 } parse_stage_t;

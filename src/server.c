@@ -142,7 +142,7 @@ int main(int argc, char *argv[])
     }
 
     int listen_fd = tcp_listen_fd(NULL, server_cfg.port, 1024);
-    MUSE_EXIT_ON(listen_fd == MUSE_ERROR, strerror(errno));
+    MUSE_EXIT_ON(listen_fd == MUSE_ERR, strerror(errno));
     ev_t listen_ev = {
         .ptr = &listen_fd,
         .in_handler = accept_connection
@@ -157,13 +157,13 @@ int main(int argc, char *argv[])
     struct epoll_event events[MAX_EVENTS];
     for (;;) {
         int nfds = epoll_wait(epfd, events, MAX_EVENTS, 500);
-        if (nfds == MUSE_ERROR)
+        if (nfds == MUSE_ERR)
             MUSE_EXIT_ON(errno != EINTR, strerror(errno));
 
         for (int i = 0; i < nfds; i++) {
             ev_t *ev = events[i].data.ptr;
             if (events[i].events & EPOLLIN) {
-                if (ev->in_handler(ev->ptr) == MUSE_ERROR) {
+                if (ev->in_handler(ev->ptr) == MUSE_ERR) {
                     if (ev->err_handler)
                         ev->err_handler(ev->ptr);
                     memset(&events[i], 0, sizeof(events[i]));
@@ -173,7 +173,7 @@ int main(int argc, char *argv[])
                 }
             }
             if (events[i].events & EPOLLOUT) {
-                if (ev->out_handler(ev->ptr) == MUSE_ERROR) {
+                if (ev->out_handler(ev->ptr) == MUSE_ERR) {
                     if (ev->err_handler)
                         ev->err_handler(ev->ptr);
                     memset(&events[i], 0, sizeof(events[i]));

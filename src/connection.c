@@ -86,9 +86,9 @@ static void open_connection(int connfd)
 
     c->event.events = EPOLLIN;
     c->event.data.ptr = ev;
-    if (epoll_ctl(epfd, EPOLL_CTL_ADD, c->fd, &c->event) == MUSE_ERROR)
+    if (epoll_ctl(epfd, EPOLL_CTL_ADD, c->fd, &c->event) == MUSE_ERR)
         close_connection(c);
-    if (set_nonblocking(connfd) == MUSE_ERROR)
+    if (set_nonblocking(connfd) == MUSE_ERR)
         close_connection(c);
 }
 
@@ -97,13 +97,13 @@ int accept_connection(void *listen_fd)
     int fd = *((int *) listen_fd);
     int connfd;
 
-    while ((connfd = accept(fd, NULL, NULL)) != MUSE_ERROR) {
+    while ((connfd = accept(fd, NULL, NULL)) != MUSE_ERR) {
         if (heap_size < MAX_CONNECTIONS)
             open_connection(connfd);
         else
             close(connfd);
     }
-    MUSE_ERR_ON(errno != EWOULDBLOCK, strerror(errno), MUSE_ERROR);
+    MUSE_ERR_ON(errno != EWOULDBLOCK, strerror(errno), MUSE_ERR);
     return MUSE_OK;
 }
 
@@ -135,8 +135,8 @@ static int connection_enable_in(connection_t *c)
 {
     if (!(c->event.events & EPOLLIN)) {
         c->event.events |= EPOLLIN;
-        MUSE_ERR_ON(epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &c->event) == MUSE_ERROR,
-                strerror(errno), MUSE_ERROR);
+        MUSE_ERR_ON(epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &c->event) == MUSE_ERR,
+                strerror(errno), MUSE_ERR);
     }
     return MUSE_OK;
 }
@@ -146,8 +146,8 @@ static int connection_disable_in(connection_t *c)
     if (c->event.events & EPOLLIN) {
         /* c->event.events &= ~EPOLLIN; */
         c->event.events ^= EPOLLIN;
-        MUSE_ERR_ON(epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &c->event) == MUSE_ERROR,
-                strerror(errno), MUSE_ERROR);
+        MUSE_ERR_ON(epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &c->event) == MUSE_ERR,
+                strerror(errno), MUSE_ERR);
     }
     return MUSE_OK;
 }
@@ -156,8 +156,8 @@ static int connection_enable_out(connection_t *c)
 {
     if (!(c->event.events & EPOLLOUT)) {
         c->event.events |= EPOLLOUT;
-        MUSE_ERR_ON(epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &c->event) == MUSE_ERROR,
-                strerror(errno), MUSE_ERROR);
+        MUSE_ERR_ON(epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &c->event) == MUSE_ERR,
+                strerror(errno), MUSE_ERR);
     }
     return MUSE_OK;
 }
@@ -166,8 +166,8 @@ static int connection_disable_out(connection_t *c)
 {
     if (c->event.events & EPOLLOUT) {
         c->event.events ^= EPOLLOUT;
-        MUSE_ERR_ON(epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &c->event) == MUSE_ERROR,
-                strerror(errno), MUSE_ERROR);
+        MUSE_ERR_ON(epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &c->event) == MUSE_ERR,
+                strerror(errno), MUSE_ERR);
     }
     return MUSE_OK;
 }
@@ -176,7 +176,7 @@ int handle_request(void *ptr)
 {
     connection_t *c = ptr;
     if (buffer_recv(&c->req.recv_buf, c->fd) != BUF_AGAGIN)
-        return MUSE_ERROR;
+        return MUSE_ERR;
 
     switch (parse_request(&c->req)) {
     case PARSE_AGAIN:
@@ -206,7 +206,7 @@ int handle_response(void *ptr)
     /* buffer为空会立即返回BUF_OK */
     int ret = buffer_send(&c->req.send_buf, c->fd);
     if (ret == BUF_ERR)
-        return MUSE_ERROR;
+        return MUSE_ERR;
     else if (ret == BUF_AGAGIN)
         return MUSE_OK;
 
@@ -216,7 +216,7 @@ int handle_response(void *ptr)
             /* sendfile 会改变文件偏移 */
             ssize_t len = sendfile(c->fd, c->req.resource_fd, NULL, c->req.resource_size);
             if (len == -1)
-                return (errno == EAGAIN || errno == EWOULDBLOCK) ? MUSE_OK : MUSE_ERROR;
+                return (errno == EAGAIN || errno == EWOULDBLOCK) ? MUSE_OK : MUSE_ERR;
             if (len == 0) {
                 close(c->req.resource_fd);
                 reset_tcp_cork(c->fd);
@@ -225,6 +225,7 @@ int handle_response(void *ptr)
         }
     }
 
+    /* TODO: parse 出错怎么处理？直接关闭连接？ */
     /* response发送完毕 */
     connection_disable_out(c);
     connection_enable_in(c);

@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MUSE_ERROR (-1)
+#define MUSE_ERR (-1)
 #define MUSE_OK (0)
 
 #define MUSE_ERR_ON(cond, msg, ret) \
@@ -21,7 +21,7 @@
     do { \
         if ((cond)) { \
             fprintf(stderr, "[EXIT in %s:%d]: %s\n", __FILE__, __LINE__, (msg)); \
-            exit(MUSE_ERROR); \
+            exit(MUSE_ERR); \
         } \
     } while (0)
 
