@@ -129,6 +129,8 @@ typedef struct {
 
 #define request_clear(req) request_init(req)
 
+void header_init(void);
+void mime_init(void);
 void request_init(request_t *req);
 int parse_request(request_t *req);
 

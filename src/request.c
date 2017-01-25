@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L /* for openat */
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -7,9 +8,11 @@
 #include <strings.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <stddef.h>
 #include "util.h"
 #include "request.h"
 #include "server.h"
+#include "dict.h"
 
 static void url_init(url_t *url)
 {
@@ -531,9 +534,106 @@ static int parse_request_line(request_t *req)
     return PARSE_OK;
 }
 
+/* TODO */
+static int handle_generic_header(request_t *req, size_t offset, str_t *value)
+{
+    str_t *header = (str_t *) (((char *) &req->header) + offset);
+    *header = *value;
+    return PARSE_OK;
+}
+
+typedef struct {
+    size_t offset;
+    int (*header_processor)(request_t *req, size_t offset, str_t *value);
+} header_handler_t;
+
+typedef struct {
+    str_t header;
+    header_handler_t handler;
+} header_map_t;
+
+/* 需要持久存储。两种方法，一是静态或全局分配，二是动态分配，动态分配太麻烦。
+ * 但是全局变量初始化只能使用常量，也就是编译时确定的，所以只能一个一个赋值，
+ * 这里讨巧了，先将header长度设长1， 后面再减。
+ */
+#define HEADER_MAP(header, processor) \
+    {{#header, sizeof(#header)}, {offsetof(header_t, header), processor}}
+
+static header_map_t _headers[] = {
+    HEADER_MAP(connection, handle_generic_header),
+    HEADER_MAP(date, handle_generic_header),
+    HEADER_MAP(mime_version, handle_generic_header),
+    HEADER_MAP(trailer, handle_generic_header),
+    HEADER_MAP(transfer_encoding, handle_generic_header),
+    HEADER_MAP(update, handle_generic_header),
+    HEADER_MAP(via, handle_generic_header),
+    HEADER_MAP(cache_control, handle_generic_header),
+    HEADER_MAP(pragma, handle_generic_header),
+    HEADER_MAP(client_ip, handle_generic_header),
+    HEADER_MAP(from, handle_generic_header),
+    HEADER_MAP(host, handle_generic_header),
+    HEADER_MAP(referer, handle_generic_header),
+    HEADER_MAP(ua_color, handle_generic_header),
+    HEADER_MAP(ua_cpu, handle_generic_header),
+    HEADER_MAP(ua_disp, handle_generic_header),
+    HEADER_MAP(ua_os, handle_generic_header),
+    HEADER_MAP(ua_pixels, handle_generic_header),
+    HEADER_MAP(user_agent, handle_generic_header),
+    HEADER_MAP(accept, handle_generic_header),
+    HEADER_MAP(accept_charset, handle_generic_header),
+    HEADER_MAP(accept_encoding, handle_generic_header),
+    HEADER_MAP(accept_language, handle_generic_header),
+    HEADER_MAP(te, handle_generic_header),
+    HEADER_MAP(expect, handle_generic_header),
+    HEADER_MAP(if_match, handle_generic_header),
+    HEADER_MAP(if_modified_since, handle_generic_header),
+    HEADER_MAP(if_none_match, handle_generic_header),
+    HEADER_MAP(if_range, handle_generic_header),
+    HEADER_MAP(if_unmodified_since, handle_generic_header),
+    HEADER_MAP(range, handle_generic_header),
+    HEADER_MAP(authorization, handle_generic_header),
+    HEADER_MAP(cookie, handle_generic_header),
+    HEADER_MAP(cookie2, handle_generic_header),
+    HEADER_MAP(max_forward, handle_generic_header),
+    HEADER_MAP(proxy_authorization, handle_generic_header),
+    HEADER_MAP(proxy_connection, handle_generic_header),
+    HEADER_MAP(allow, handle_generic_header),
+    HEADER_MAP(location, handle_generic_header),
+    HEADER_MAP(content_base, handle_generic_header),
+    HEADER_MAP(content_encoding, handle_generic_header),
+    HEADER_MAP(content_language, handle_generic_header),
+    HEADER_MAP(content_length, handle_generic_header),
+    HEADER_MAP(content_location, handle_generic_header),
+    HEADER_MAP(content_md5, handle_generic_header),
+    HEADER_MAP(content_range, handle_generic_header),
+    HEADER_MAP(content_type, handle_generic_header),
+    HEADER_MAP(etag, handle_generic_header),
+    HEADER_MAP(expires, handle_generic_header),
+    HEADER_MAP(last_modified, handle_generic_header)
+};
+
+static dict_t *header_handlers;
+
+void header_init(void)
+{
+    header_handlers = dict_new();
+    MUSE_EXIT_ON(!header_handlers, "header_init failed");
+
+    int n = sizeof(_headers) / sizeof(_headers[0]);
+    for (int i = 0; i < n; i++) {
+        _headers[i].header.len -= 1;
+        dict_put(header_handlers, &_headers[i].header, &_headers[i].handler);
+    }
+}
+
 static int handle_header(request_t *req, str_t *name, str_t *value)
 {
-    return PARSE_OK;
+    header_handler_t *handler = dict_get(header_handlers, name);
+    if (!handler) {
+        req->status_code = 400;
+        return PARSE_ERR;
+    }
+    return handler->header_processor(req, handler->offset, value);
 }
 
 static int parse_header(request_t *req)
@@ -596,10 +696,8 @@ static int parse_header(request_t *req)
         }
     }
 
-    if (handle_header(req, &name, &value) != PARSE_OK) {
-        req->status_code = 400;
+    if (handle_header(req, &name, &value) != PARSE_OK)
         return PARSE_ERR;
-    }
 
     req->stage = PARSE_HEADER;
     req->recv_buf.begin = end;
@@ -609,11 +707,15 @@ static int parse_header(request_t *req)
 static int parse_body(request_t *req)
 {
     assert(req->stage == PARSE_BODY);
+    return PARSE_OK;
+}
+
+void mime_init(void)
+{
 }
 
 static void build_response(request_t *req)
-{
-}
+{}
 
 int parse_request(request_t *req)
 {
