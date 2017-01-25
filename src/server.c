@@ -105,6 +105,9 @@ static void server_init(void)
     struct rlimit nofile_limit = {65535, 65535};
     MUSE_EXIT_ON(setrlimit(RLIMIT_NOFILE, &nofile_limit) == -1,
             strerror(errno));
+
+    header_init();
+    mime_init();
 }
 
 int main(int argc, char *argv[])
@@ -143,6 +146,9 @@ int main(int argc, char *argv[])
 
     int listen_fd = tcp_listen_fd(NULL, server_cfg.port, 1024);
     MUSE_EXIT_ON(listen_fd == MUSE_ERR, strerror(errno));
+    epfd = epoll_create1(0);
+    MUSE_EXIT_ON(epfd == MUSE_ERR, strerror(errno));
+
     ev_t listen_ev = {
         .ptr = &listen_fd,
         .in_handler = accept_connection
