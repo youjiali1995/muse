@@ -115,6 +115,7 @@ typedef struct {
     version_t http_version;
 
     header_t header;
+    int content_length;
     str_t body;
 
     parse_stage_t stage;

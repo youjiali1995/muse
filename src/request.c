@@ -28,6 +28,7 @@ void request_init(request_t *req)
     req->http_version.major = req->http_version.minor = 0;
 
     memset(&req->header, 0, sizeof(req->header));
+    req->content_length = 0;
     str_init(&req->body);
 
     req->stage = PARSE_REQUEST_LINE;
@@ -243,11 +244,10 @@ static bool is_valid_query_ch(char ch)
     return false;
 }
 
-/* TODO: CGI? */
+/* TODO: path检查.. */
 static int handle_path(request_t *req)
 {
     char *path = (req->url.path.len == 0) ? "./" : req->url.path.str;
-    /* 不允许绝对路径 */
     if (path[0] == '/')
         return PARSE_ERR;
 
@@ -361,6 +361,7 @@ static int parse_url(request_t *req, char *end)
 
         case PARSE_URL_PATH:
             switch (*p) {
+            /* TODO: bug */
             case '.':
                 req->url.extension.str = p + 1;
                 break;
@@ -542,6 +543,19 @@ static int handle_generic_header(request_t *req, size_t offset, str_t *value)
     return PARSE_OK;
 }
 
+static int handle_content_length(request_t *req, size_t offset, str_t *value)
+{
+    handle_generic_header(req, offset, value);
+    for (int i = 0; i < value->len; i++) {
+        if (!isdigit(value->str[i])) {
+            req->status_code = 400;
+            return PARSE_ERR;
+        }
+        req->content_length = req->content_length * 10 + value->str[i] - '0';
+    }
+    return PARSE_OK;
+}
+
 typedef struct {
     size_t offset;
     int (*header_processor)(request_t *req, size_t offset, str_t *value);
@@ -602,7 +616,7 @@ static header_map_t _headers[] = {
     HEADER_MAP(content_base, handle_generic_header),
     HEADER_MAP(content_encoding, handle_generic_header),
     HEADER_MAP(content_language, handle_generic_header),
-    HEADER_MAP(content_length, handle_generic_header),
+    HEADER_MAP(content_length, handle_content_length),
     HEADER_MAP(content_location, handle_generic_header),
     HEADER_MAP(content_md5, handle_generic_header),
     HEADER_MAP(content_range, handle_generic_header),
@@ -629,7 +643,7 @@ void header_init(void)
 static int handle_header(request_t *req, str_t *name, str_t *value)
 {
     header_handler_t *handler = dict_get(header_handlers, name);
-    if (!handler) {
+    if (!handler || value->len == 0) {
         req->status_code = 400;
         return PARSE_ERR;
     }
@@ -644,7 +658,14 @@ static int parse_header(request_t *req)
     char *end = req->check_ch;
     /* 可以只检查长度 */
     if (end - p == 2 && *p == '\r' && *(p + 1) == '\n') {
-        req->stage = (req->method == PUT || req->method == POST) ? PARSE_BODY : PARSE_DONE;
+        /* HTTP1.1 客户端必须在所有请求中包含Host首部 */
+        if (req->http_version.major == 1 && req->http_version.minor == 1
+                && req->header.host.len == 0) {
+            req->status_code = 400;
+            return PARSE_ERR;
+        }
+        req->recv_buf.begin = end;
+        req->stage = PARSE_BODY;
         return PARSE_OK;
     }
 
@@ -707,6 +728,31 @@ static int parse_header(request_t *req)
 static int parse_body(request_t *req)
 {
     assert(req->stage == PARSE_BODY);
+
+    switch (req->method) {
+    case PUT:
+    case POST:
+        if (req->content_length == 0) {
+            req->status_code = 400;
+            return PARSE_ERR;
+        }
+        break;
+
+    default:
+        if (req->content_length != 0) {
+            req->status_code = 400;
+            return PARSE_ERR;
+        }
+        req->stage = PARSE_DONE;
+        return PARSE_OK;
+    }
+
+    if (buffer_size(&req->recv_buf) < req->content_length)
+        return PARSE_AGAIN;
+    req->body.str = req->recv_buf.begin;
+    req->body.len = req->content_length;
+    req->stage = PARSE_DONE;
+    req->recv_buf.begin += req->content_length;
     return PARSE_OK;
 }
 
@@ -715,14 +761,16 @@ void mime_init(void)
 }
 
 static void build_response(request_t *req)
-{}
+{
+
+}
 
 int parse_request(request_t *req)
 {
     assert(req);
 
     int ret;
-    while ((ret = parse_line(req)) == PARSE_OK) {
+    while (req->stage != PARSE_BODY && ((ret = parse_line(req)) == PARSE_OK)) {
         switch (req->stage) {
         case PARSE_REQUEST_LINE:
             ret = parse_request_line(req);
@@ -732,16 +780,15 @@ int parse_request(request_t *req)
             ret = parse_header(req);
             break;
 
-        case PARSE_BODY:
-            ret = parse_body(req);
-            break;
-
         default:
             MUSE_EXIT_ON(1, "unknown parse stage of request");
         }
         if (ret == PARSE_ERR)
             break;
     }
+
+    if (req->stage == PARSE_BODY)
+        ret = parse_body(req);
 
     if (ret == PARSE_ERR) {
         build_response(req);
