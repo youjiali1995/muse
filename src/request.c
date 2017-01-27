@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L /* for openat */
+#include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -149,12 +150,6 @@ static int parse_method(request_t *req, char *end)
         return PARSE_ERR;
     }
 
-    /* TODO */
-    if (req->method != GET) {
-        req->status_code = 501;
-        return PARSE_ERR;
-    }
-
     req->status_code = 200;
     req->recv_buf.begin = end;
     req->stage = PARSE_URL;
@@ -251,7 +246,7 @@ static int handle_path(request_t *req)
     if (path[0] == '/')
         return PARSE_ERR;
 
-    int fd = openat(server_cfg.root_fd, path, O_RDONLY);
+    int fd = openat(server_cfg.src_root, path, O_RDONLY);
     if (fd == -1) {
         req->status_code = 404;
         return PARSE_ERR;
@@ -392,7 +387,7 @@ static int parse_url(request_t *req, char *end)
             break;
 
         default:
-            MUSE_EXIT_ON(0, "unknown stage in parse_url");
+            MUSE_EXIT_ON(1, "invalid stage in parse_url");
         }
     }
 
@@ -523,7 +518,7 @@ static int parse_request_line(request_t *req)
             break;
 
         default:
-            MUSE_EXIT_ON(1, "unknown parse stage in parse_request_line");
+            MUSE_EXIT_ON(1, "invalid parse stage in parse_request_line");
         }
     }
 
@@ -713,7 +708,7 @@ static int parse_header(request_t *req)
             break;
 
         default:
-            MUSE_EXIT_ON(1, "unknown stage in parse_header");
+            MUSE_EXIT_ON(1, "invalid stage in parse_header");
         }
     }
 
@@ -756,13 +751,201 @@ static int parse_body(request_t *req)
     return PARSE_OK;
 }
 
+#define MIME_MAP(extension, mime_type) \
+    {{#extension, sizeof(#extension)}, {#mime_type, sizeof(#mime_type)}}
+
+static str_t _mimes[][2] = {
+    MIME_MAP(htm, text/html),
+    MIME_MAP(html, text/html),
+    MIME_MAP(txt, text/plain),
+    MIME_MAP(css, text/css),
+
+    MIME_MAP(jpeg, image/jepg),
+    MIME_MAP(jpg, image/jepg),
+    MIME_MAP(png, image/png),
+    MIME_MAP(gif, image/gif),
+    MIME_MAP(ico, image/x-icon)
+};
+
+static dict_t *mime_maps;
+
 void mime_init(void)
 {
+    mime_maps = dict_new();
+    MUSE_EXIT_ON(!mime_maps, "mime_init failed");
+
+    int n = sizeof(_mimes) / sizeof(_mimes[0]);
+    for (int i = 0; i < n; i++) {
+        _mimes[i][0].len -= 1;
+        _mimes[i][1].len -= 1;
+        dict_put(mime_maps, &_mimes[i][0], &_mimes[i][1]);
+    }
 }
 
-static void build_response(request_t *req)
+static const str_t status_reason(int status_code)
 {
+    switch (status_code) {
+    case 100:
+        return STR("100 Continue");
+    case 101:
+        return STR("101 Switching Protocols");
+    case 200:
+        return STR("200 OK");
+    case 201:
+        return STR("201 Created");
+    case 202:
+        return STR("202 Accepted");
+    case 203:
+        return STR("203 Non-Authoritative Information");
+    case 204:
+        return STR("204 No Content");
+    case 205:
+        return STR("205 Reset Content");
+    case 206:
+        return STR("206 Partial Content");
+    case 300:
+        return STR("300 Multiple Choices");
+    case 301:
+        return STR("301 Moved Permanently");
+    case 302:
+        return STR("302 Found");
+    case 303:
+        return STR("303 See Other");
+    case 304:
+        return STR("304 Not Modified");
+    case 305:
+        return STR("305 Use Proxy");
+    case 307:
+        return STR("307 Temporary Redirect");
+    case 400:
+        return STR("400 Bad request");
+    case 401:
+        return STR("401 Unauthorized");
+    case 402:
+        return STR("402 Payment Required");
+    case 403:
+        return STR("403 Forbidden");
+    case 404:
+        return STR("404 Not Found");
+    case 405:
+        return STR("405 Method Not Allowed");
+    case 406:
+        return STR("406 Not Acceptable");
+    case 407:
+        return STR("407 Proxy Authentication Required");
+    case 408:
+        return STR("408 Request Timeout");
+    case 409:
+        return STR("409 Conflict");
+    case 410:
+        return STR("410 Gone");
+    case 411:
+        return STR("411 Length Required");
+    case 412:
+        return STR("412 Precondition Failed");
+    case 413:
+        return STR("413 Request Entity Too Large");
+    case 414:
+        return STR("414 Request URI Too Long");
+    case 415:
+        return STR("415 Unsupported Media Type");
+    case 416:
+        return STR("416 Requested Range Not Satisfiable");
+    case 417:
+        return STR("417 Expectation Failed");
+    case 500:
+        return STR("500 Internal Server Error");
+    case 501:
+        return STR("501 Not Implemented");
+    case 502:
+        return STR("502 Bad Gateway");
+    case 503:
+        return STR("503 Service Unavailable");
+    case 504:
+        return STR("504 Gateway Timeout");
+    case 505:
+        return STR("505 HTTP Version Not Supported");
 
+    default:
+        MUSE_EXIT_ON(1, "invalid http status code");
+    }
+}
+
+static void build_response_status_line(request_t *req)
+{
+    buffer_printf(&req->send_buf, "HTTP/1.%d ", req->http_version.minor);
+    str_t reason = status_reason(req->status_code);
+    buffer_append_str(&req->send_buf, &reason);
+    buffer_append_cstr(&req->send_buf, "\r\n");
+}
+
+static void build_response_date(request_t *req)
+{
+    time_t t = time(NULL);
+    struct tm *tm = localtime(&t);
+    req->send_buf.end += strftime(req->send_buf.end, buffer_space(&req->send_buf),
+            "Date: %a, %d %d %Y %H:%M:%S GMT\r\n", tm);
+}
+
+#define ERR_FILE(status) #status ".html"
+
+static void build_response_err(request_t *req)
+{
+    assert(req->status_code >= 300);
+
+    build_response_status_line(req);
+    buffer_append_cstr(&req->send_buf, "Server: muse\r\n");
+    build_response_date(req);
+    buffer_append_cstr(&req->send_buf, "Connection: close\r\n");
+    buffer_append_cstr(&req->send_buf, "Content-Type: text/html\r\n");
+
+    if (req->resource_fd != -1)
+        close(req->resource_fd);
+    req->resource_fd = openat(server_cfg.err_root, ERR_FILE(req->status_code), O_RDONLY);
+    MUSE_EXIT_ON(req->resource_fd == -1, ERR_FILE(req->status_code) "not exist");
+    struct stat stat;
+    fstat(req->resource_fd, &stat);
+    req->resource_size = stat.st_size;
+    buffer_printf(&req->send_buf, "Content-Length: %d\r\n", req->resource_size);
+
+    buffer_append_cstr(&req->send_buf, "\r\n");
+}
+
+static void build_response_ok(request_t *req)
+{
+    switch (req->status_code) {
+    case 100:
+    case 101:
+    case 201:
+    case 202:
+    case 203:
+    case 204:
+    case 205:
+    case 206:
+        /* TODO */
+        break;
+
+    case 200:
+        break;
+
+    default:
+        MUSE_EXIT_ON(1, "invalid status code in build_response_ok");
+    }
+
+    build_response_status_line(req);
+    buffer_append_cstr(&req->send_buf, "server: muse\r\n");
+    build_response_date(req);
+
+    buffer_append_cstr(&req->send_buf, "Content-type: ");
+    str_t *mime_type = dict_get(mime_maps, &req->url.extension);
+    if (mime_type)
+        buffer_append_str(&req->send_buf, mime_type);
+    else
+        buffer_append_cstr(&req->send_buf, "text/html");
+    buffer_append_cstr(&req->send_buf, "\r\n");
+    buffer_printf(&req->send_buf, "Content-Length: %d\r\n", req->resource_size);
+
+    buffer_append_cstr(&req->send_buf, "\r\n");
 }
 
 int parse_request(request_t *req)
@@ -781,7 +964,7 @@ int parse_request(request_t *req)
             break;
 
         default:
-            MUSE_EXIT_ON(1, "unknown parse stage of request");
+            MUSE_EXIT_ON(1, "invalid parse stage of request");
         }
         if (ret == PARSE_ERR)
             break;
@@ -791,11 +974,11 @@ int parse_request(request_t *req)
         ret = parse_body(req);
 
     if (ret == PARSE_ERR) {
-        build_response(req);
+        build_response_err(req);
         return PARSE_ERR;
     }
     if (req->stage == PARSE_DONE) {
-        build_response(req);
+        build_response_ok(req);
         return PARSE_OK;
     }
     return PARSE_AGAIN;
