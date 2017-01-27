@@ -225,7 +225,9 @@ int handle_response(void *ptr)
         }
     }
 
-    /* TODO: parse 出错怎么处理？直接关闭连接？ */
+    if (c->req.status_code >= 300)
+        return MUSE_ERR;
+
     /* response发送完毕 */
     connection_disable_out(c);
     connection_enable_in(c);
