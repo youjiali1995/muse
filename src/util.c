@@ -15,7 +15,7 @@ void muse_log(const char *fmt, ...)
     if (!tm)
         return;
 
-    fprintf(log_file, "[%4d: %02d: %02d: %02d:%02d:%02d] [pid: %5d]",
+    fprintf(log_file, "[%4d: %02d: %02d: %02d:%02d:%02d] [pid: %5d] ",
             tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
             tm->tm_hour, tm->tm_min, tm->tm_sec, getpid());
 
