@@ -56,14 +56,17 @@ static bool reload_flag = false;
 
 static void sigint_handler(int sig)
 {
+    int save_errno = errno;
+
     muse_log("muse exited");
-    if (getpid() == get_pid()) {
-        kill(-getpid(), SIGINT);
-    }
-    if (!reload_flag)
+    kill(-getpid(), SIGINT);
+    if (!reload_flag) {
+        save_pid(0);
         raise(SIGKILL);
-    else
+    } else
         reload_flag = false;
+
+    errno = save_errno;
 }
 
 static void sighup_handler(int sig)
