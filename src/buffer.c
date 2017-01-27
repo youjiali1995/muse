@@ -1,3 +1,6 @@
+#include <string.h>
+#include <stdio.h>
+#include <stdarg.h>
 #include <assert.h>
 #include <errno.h>
 #include <sys/types.h>
@@ -36,3 +39,28 @@ int buffer_send(buffer_t *buffer, int fd)
     buffer_clear(buffer);
     return BUF_OK;
 }
+
+int buffer_printf(buffer_t *buffer, const char *fmt, ...)
+{
+    assert(buffer && fmt);
+
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buffer->end, buffer_space(buffer), fmt, ap);
+    buffer->end += n;
+    va_end(ap);
+    return n;
+}
+
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
+int buffer_append_str(buffer_t *buffer, const str_t *str)
+{
+    assert(buffer && str);
+
+    int len = MIN(buffer_space(buffer), str->len);
+    memcpy(buffer->end, str->str, len);
+    buffer->end += len;
+    return len;
+}
+
