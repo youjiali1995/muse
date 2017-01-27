@@ -9,7 +9,8 @@ typedef struct {
     bool daemon;
     int worker;
     int timeout;
-    int root_fd;
+    int src_root;
+    int err_root;
 } config_t;
 
 int config_load(config_t *config, const char *config_file);

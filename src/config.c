@@ -73,11 +73,22 @@ int config_load(config_t *config, const char *config_file)
     MUSE_ERR_ON(!p || json_get_type(p) != JSON_NUMBER, "timeout not specified or error type", MUSE_ERR);
     config->timeout = (int) json_get_number(p);
 
-    p = json_get_object_value(&v, "root");
-    MUSE_ERR_ON(!p || json_get_type(p) != JSON_STRING, "root not specified or error type", MUSE_ERR);
-    char *root = json_get_string(p);
-    config->root_fd = open(root, O_RDONLY);
-    MUSE_ERR_ON(config->root_fd < 0, strerror(errno), MUSE_ERR);
+    p = json_get_object_value(&v, "src_root");
+    MUSE_ERR_ON(!p || json_get_type(p) != JSON_STRING, "src_root not specified or error type", MUSE_ERR);
+    char *src_root = json_get_string(p);
+    config->src_root= open(src_root, O_RDONLY);
+    MUSE_ERR_ON(config->src_root < 0, strerror(errno), MUSE_ERR);
+    struct stat stat;
+    fstat(config->src_root, &stat);
+    MUSE_ERR_ON(!S_ISDIR(stat.st_mode), "src_root not directory", MUSE_ERR);
+
+    p = json_get_object_value(&v, "err_root");
+    MUSE_ERR_ON(!p || json_get_type(p) != JSON_STRING, "err_root not specified or error type", MUSE_ERR);
+    char *err_root = json_get_string(p);
+    config->err_root = open(err_root, O_RDONLY);
+    MUSE_ERR_ON(config->err_root < 0, strerror(errno), MUSE_ERR);
+    fstat(config->err_root, &stat);
+    MUSE_ERR_ON(!S_ISDIR(stat.st_mode), "err_root not directory", MUSE_ERR);
 
     json_free(&v);
     free(json);
