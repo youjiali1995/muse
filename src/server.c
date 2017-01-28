@@ -22,7 +22,7 @@ static void print_usage(void)
 {
     printf("Usage: muse [OPTION]\n"
            "    --stop      Stop muse.\n"
-           "    --restart    Restart muse and reload config.json.\n"
+           "    --restart   Restart muse and reload config.json.\n"
            "    --help      Print usage.\n");
 }
 
