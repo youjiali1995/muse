@@ -1,5 +1,6 @@
 test_config
 muse
+muse.log
 
 # Object files
 *.o
