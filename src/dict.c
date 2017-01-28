@@ -65,15 +65,17 @@ void dict_put(dict_t *dict, str_t *key, void *val)
     size_t hash = str_hash(key);
     size_t i;
     for (i = hash & (dict->size - 1); dict->dict[i].key; i = PROBE(i) & (dict->size - 1)) {
-        if (dict->dict[i].hash == hash && str_eq(dict->dict[i].key, key))
+        if (dict->dict[i].hash == hash && str_eq(dict->dict[i].key, key)) {
             dict->dict[i].val = val;
+            break;
+        }
     }
     if (!dict->dict[i].key) {
         dict->dict[i].hash = hash;
         dict->dict[i].key = key;
         dict->dict[i].val = val;
     }
-
+    dict->used++;
     if (dict->used * 3 >= dict->size * 2)
         dict_resize(dict, dict->size * 2);
     return;

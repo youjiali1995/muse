@@ -15,7 +15,7 @@ typedef struct {
     dict_entry_t *dict;
 } dict_t;
 
-#define DICT_INIT_SIZE 8
+#define DICT_INIT_SIZE 16
 
 dict_t *dict_new(void);
 void *dict_get(dict_t *dict, const str_t *key);
