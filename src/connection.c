@@ -35,7 +35,8 @@ static void heap_shift_down(int idx)
 
     for (;;) {
         int smallest;
-        if (LEFT(idx) < heap_size && connections[LEFT(idx)]->active_time < c->active_time)
+        if (LEFT(idx) < heap_size
+                && connections[LEFT(idx)]->active_time < c->active_time)
             smallest = LEFT(idx);
         else
             smallest = idx;
@@ -48,13 +49,16 @@ static void heap_shift_down(int idx)
         connections[idx]->heap_idx = idx;
         idx = smallest;
     }
+    connections[idx] = c;
+    connections[idx]->heap_idx = idx;
 }
 
 /* 时间堆：最小堆 */
 static void register_connection(connection_t *c)
 {
-    connections[heap_size] = c;
-    heap_shift_up(heap_size++);
+    c->heap_idx = heap_size++;
+    connections[c->heap_idx] = c;
+    heap_shift_up(c->heap_idx);
 }
 
 static void active_connection(void *ptr)
@@ -66,18 +70,26 @@ static void active_connection(void *ptr)
 
 static void open_connection(int connfd)
 {
-    connection_t *c = malloc(sizeof(*c));
-    if (!c)
+    if (set_nonblocking(connfd) == MUSE_ERR) {
         close(connfd);
-    register_connection(c);
+        return;
+    }
 
+    connection_t *c = malloc(sizeof(*c));
+    if (!c) {
+        close(connfd);
+        return;
+    }
     c->fd = connfd;
     request_init(&c->req);
     c->active_time = time(NULL);
 
     ev_t *ev = malloc(sizeof(*ev));
-    if (!ev)
-        close_connection(c);
+    if (!ev) {
+        close(connfd);
+        free(c);
+        return;
+    }
     ev->ptr = c;
     ev->in_handler = handle_request;
     ev->out_handler = handle_response;
@@ -86,10 +98,14 @@ static void open_connection(int connfd)
 
     c->event.events = EPOLLIN;
     c->event.data.ptr = ev;
-    if (epoll_ctl(epfd, EPOLL_CTL_ADD, c->fd, &c->event) == MUSE_ERR)
-        close_connection(c);
-    if (set_nonblocking(connfd) == MUSE_ERR)
-        close_connection(c);
+    if (epoll_ctl(epfd, EPOLL_CTL_ADD, c->fd, &c->event) == MUSE_ERR) {
+        close(connfd);
+        free(c);
+        free(ev);
+        return;
+    }
+
+    register_connection(c);
 }
 
 int accept_connection(void *listen_fd)
