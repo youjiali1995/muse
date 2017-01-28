@@ -87,6 +87,8 @@ typedef struct {
     str_t etag;
     str_t expires;
     str_t last_modified;
+    /* chrome */
+    str_t upgrade_insecure_requests;
 } header_t;
 
 typedef enum {

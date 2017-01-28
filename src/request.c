@@ -33,11 +33,12 @@ void request_init(request_t *req)
     str_init(&req->body);
 
     req->stage = PARSE_REQUEST_LINE;
-    req->check_ch = req->recv_buf.begin;
     req->status_code = 200;
 
     buffer_init(&req->recv_buf);
     buffer_init(&req->send_buf);
+    req->check_ch = req->recv_buf.begin;
+
     req->resource_fd = -1;
     req->resource_size = 0;
 }
@@ -242,7 +243,13 @@ static bool is_valid_query_ch(char ch)
 /* TODO: path检查.. */
 static int handle_path(request_t *req)
 {
-    char *path = (req->url.path.len == 0) ? "./" : req->url.path.str;
+    char *path;
+    if (req->url.path.len == 0)
+        path = "./";
+    else {
+        req->url.path.str[req->url.path.len] = '\0';
+        path = req->url.path.str;
+    }
     if (path[0] == '/')
         return PARSE_ERR;
 
@@ -356,7 +363,7 @@ static int parse_url(request_t *req, char *end)
 
         case PARSE_URL_PATH:
             switch (*p) {
-            /* TODO: bug */
+            /* TODO: bug? */
             case '.':
                 req->url.extension.str = p + 1;
                 break;
@@ -496,7 +503,8 @@ static int parse_request_line(request_t *req)
             case '\t':
                 if (parse_url(req, p) != PARSE_OK)
                     return PARSE_ERR;
-                p = parse_whitespace(req, p);
+                /* 需要+1，handle_url可能修改空格 */
+                p = parse_whitespace(req, p + 1);
                 break;
 
             default:
@@ -510,6 +518,7 @@ static int parse_request_line(request_t *req)
                 assert(p + 2 == end && *(p + 1) == '\n');
                 if (parse_http_version(req, p) != PARSE_OK)
                     return PARSE_ERR;
+                p += 1;
                 break;
 
             default:
@@ -618,7 +627,8 @@ static header_map_t _headers[] = {
     HEADER_MAP(content_type, handle_generic_header),
     HEADER_MAP(etag, handle_generic_header),
     HEADER_MAP(expires, handle_generic_header),
-    HEADER_MAP(last_modified, handle_generic_header)
+    HEADER_MAP(last_modified, handle_generic_header),
+    HEADER_MAP(upgrade_insecure_requests, handle_generic_header)
 };
 
 static dict_t *header_handlers;
@@ -677,7 +687,7 @@ static int parse_header(request_t *req)
             case ':':
                 name.len = p - name.str;
                 req->stage = PARSE_HEADER_VALUE;
-                value.str = p = parse_whitespace(req, p);
+                value.str = p = parse_whitespace(req, p + 1);
                 break;
 
             case '-':
@@ -884,10 +894,8 @@ static void build_response_date(request_t *req)
     time_t t = time(NULL);
     struct tm *tm = localtime(&t);
     req->send_buf.end += strftime(req->send_buf.end, buffer_space(&req->send_buf),
-            "Date: %a, %d %d %Y %H:%M:%S GMT\r\n", tm);
+            "Date: %a, %d %b %Y %H:%M:%S GMT\r\n", tm);
 }
-
-#define ERR_FILE(status) #status ".html"
 
 static void build_response_err(request_t *req)
 {
@@ -901,8 +909,10 @@ static void build_response_err(request_t *req)
 
     if (req->resource_fd != -1)
         close(req->resource_fd);
-    req->resource_fd = openat(server_cfg.err_root, ERR_FILE(req->status_code), O_RDONLY);
-    MUSE_EXIT_ON(req->resource_fd == -1, ERR_FILE(req->status_code) "not exist");
+    char err_file[10];
+    snprintf(err_file, 10, "%d.html", req->status_code);
+    req->resource_fd = openat(server_cfg.err_root, err_file, O_RDONLY);
+    MUSE_EXIT_ON(req->resource_fd == -1, "error file not exist");
     struct stat stat;
     fstat(req->resource_fd, &stat);
     req->resource_size = stat.st_size;
@@ -913,6 +923,13 @@ static void build_response_err(request_t *req)
 
 static void build_response_ok(request_t *req)
 {
+    /* TODO: 只支持GET */
+    if (req->method != GET) {
+        req->status_code = 501;
+        build_response_err(req);
+        return;
+    }
+
     switch (req->status_code) {
     case 100:
     case 101:
