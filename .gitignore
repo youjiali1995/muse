@@ -1,4 +1,6 @@
-test_*
+test_config
+muse
+
 # Object files
 *.o
 *.ko
