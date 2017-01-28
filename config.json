@@ -5,7 +5,9 @@
 
     "worker": 4,
 
-    "timeout": 30,
+    "timeout": 20,
 
-    "root": "www"
+    "src_root": "www",
+
+    "err_root": "err"
 }
