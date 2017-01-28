@@ -38,6 +38,7 @@ static pid_t get_pid(void)
 
 static void save_pid(pid_t pid)
 {
+    /* truncate file to zero length */
     FILE *fp = fopen("log/muse.pid", "w");
     MUSE_EXIT_ON(!fp, "open pid file: log/muse.pid failed");
     fprintf(fp, "%d", pid);
@@ -52,34 +53,39 @@ static void send_signal(int sig)
     kill(pid, sig);
 }
 
-static bool reload_flag = false;
+typedef enum {
+    MUSE_STOP,
+    MUSE_RELOAD
+} muse_status_t;
+
+static muse_status_t status = MUSE_STOP;
 
 static void sigint_handler(int sig)
 {
-    int save_errno = errno;
-
     muse_log("muse exited");
-    kill(-getpid(), SIGINT);
-    if (!reload_flag) {
+    switch (status) {
+    case MUSE_STOP:
+        kill(-getpid(), SIGINT);
         save_pid(0);
         raise(SIGKILL);
-    } else
-        reload_flag = false;
+        break;
 
-    errno = save_errno;
+    case MUSE_RELOAD:
+        status = MUSE_STOP;
+        break;
+
+    default:
+        MUSE_EXIT_ON(1, "invalid reload_flag in sigint_handler");
+    }
 }
 
 static void sighup_handler(int sig)
 {
-    int save_errno = errno;
-
     muse_log("muse reload config.json and restarting");
     MUSE_EXIT_ON(config_load(&server_cfg, "config.json") != MUSE_OK,
             "load config.json failed");
-    reload_flag = true;
+    status = MUSE_RELOAD;
     kill(-getpid(), SIGINT);
-
-    errno = save_errno;
 }
 
 static void set_sig_handler(int sig, void (*handler)(int))
@@ -87,7 +93,7 @@ static void set_sig_handler(int sig, void (*handler)(int))
     struct sigaction sa;
     sa.sa_handler = handler;
     sa.sa_flags = SA_RESTART;
-    sigfillset(&sa.sa_mask);
+    sigemptyset(&sa.sa_mask);
     MUSE_EXIT_ON(sigaction(sig, &sa, NULL) == -1,
             "set signal hanlder failed");
 }
@@ -96,10 +102,6 @@ static void server_init(void)
 {
     MUSE_EXIT_ON(config_load(&server_cfg, "config.json") != MUSE_OK,
             "load config.json failed");
-
-    if (server_cfg.daemon)
-        daemon(1, 0);
-    save_pid(getpid());
 
     signal(SIGPIPE, SIG_IGN);
     set_sig_handler(SIGINT, sigint_handler);
@@ -111,6 +113,11 @@ static void server_init(void)
 
     header_init();
     mime_init();
+
+    save_pid(getpid());
+
+    if (server_cfg.daemon)
+        daemon(1, 0);
 }
 
 int main(int argc, char *argv[])
@@ -146,6 +153,9 @@ int main(int argc, char *argv[])
             continue;
         worker++;
     }
+
+    signal(SIGINT, SIG_DFL);
+    signal(SIGHUP, SIG_DFL);
 
     int listen_fd = tcp_listen_fd(NULL, server_cfg.port, 1024);
     MUSE_EXIT_ON(listen_fd == MUSE_ERR, strerror(errno));
@@ -185,7 +195,6 @@ int main(int argc, char *argv[])
                 if (ev->out_handler(ev->ptr) == MUSE_ERR) {
                     if (ev->err_handler)
                         ev->err_handler(ev->ptr);
-                    memset(&events[i], 0, sizeof(events[i]));
                 } else {
                     if (ev->ok_handler)
                         ev->ok_handler(ev->ptr);
