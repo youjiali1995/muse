@@ -114,10 +114,11 @@ static void server_init(void)
     header_init();
     mime_init();
 
-    save_pid(getpid());
-
     if (server_cfg.daemon)
         daemon(1, 0);
+
+    /* 需要在daemon后保存pid，daemon会fork改变pid */
+    save_pid(getpid());
 }
 
 int main(int argc, char *argv[])
@@ -135,6 +136,8 @@ int main(int argc, char *argv[])
 
     MUSE_EXIT_ON(get_pid() != 0, "muse has already been running");
 
+    /* 检测muse.pid */
+    get_pid();
     server_init();
     muse_log("muse server started, listening at port: %u", server_cfg.port);
 
