@@ -774,7 +774,9 @@ static str_t _mimes[][2] = {
     MIME_MAP(jpg, image/jepg),
     MIME_MAP(png, image/png),
     MIME_MAP(gif, image/gif),
-    MIME_MAP(ico, image/x-icon)
+    MIME_MAP(ico, image/x-icon),
+
+    MIME_MAP(pdf, application/pdf)
 };
 
 static dict_t *mime_maps;
