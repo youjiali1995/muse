@@ -950,10 +950,10 @@ static void build_response_ok(request_t *req)
     }
 
     build_response_status_line(req);
-    buffer_append_cstr(&req->send_buf, "server: muse\r\n");
+    buffer_append_cstr(&req->send_buf, "Server: muse\r\n");
     build_response_date(req);
 
-    buffer_append_cstr(&req->send_buf, "Content-type: ");
+    buffer_append_cstr(&req->send_buf, "Content-Type: ");
     str_t *mime_type = dict_get(mime_maps, &req->url.extension);
     if (mime_type)
         buffer_append_str(&req->send_buf, mime_type);
