@@ -2,6 +2,7 @@ test_config
 muse
 muse.log
 muse.pid
+config.json
 
 # Object files
 *.o
