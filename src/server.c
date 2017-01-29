@@ -82,6 +82,8 @@ static void sigint_handler(int sig)
 static void sighup_handler(int sig)
 {
     muse_log("muse reload config.json and restarting");
+    close(server_cfg.src_root);
+    close(server_cfg.err_root);
     MUSE_EXIT_ON(config_load(&server_cfg, "config.json") != MUSE_OK,
             "load config.json failed");
     status = MUSE_RELOAD;
