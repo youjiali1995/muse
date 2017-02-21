@@ -107,6 +107,8 @@ static void server_init(void)
 
     signal(SIGPIPE, SIG_IGN);
     set_sig_handler(SIGINT, sigint_handler);
+    /* 系统关闭时会发送SIGTERM */
+    set_sig_handler(SIGTERM, sigint_handler);
     set_sig_handler(SIGHUP, sighup_handler);
 
     struct rlimit nofile_limit = {65535, 65535};
